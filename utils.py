@@ -11,6 +11,7 @@
 from ultralytics import YOLO
 import streamlit as st
 import cv2
+import time
 from PIL import Image
 import tempfile
 
@@ -22,21 +23,22 @@ def _display_detected_frames(conf, model, st_frame, image):
     :param model (YOLOv8): An instance of the `YOLOv8` class containing the YOLOv8 model.
     :param st_frame (Streamlit object): A Streamlit object to display the detected video.
     :param image (numpy array): A numpy array representing the video frame.
-    :return: None
+    :return: float: inference time in seconds
     """
-    # Resize the image to a standard size
     image = cv2.resize(image, (720, int(720 * (9 / 16))))
 
-    # Predict the objects in the image using YOLOv8 model
+    t1 = time.time()
     res = model.predict(image, conf=conf)
+    t2 = time.time()
+    infer_time = t2 - t1
 
-    # Plot the detected objects on the video frame
     res_plotted = res[0].plot()
     st_frame.image(res_plotted,
-                   caption='Detected Video',
+                   caption=f'Detected Video | Inference: {infer_time:.3f}s',
                    channels="BGR",
                    use_column_width=True
                    )
+    return infer_time
 
 
 @st.cache_resource
@@ -114,27 +116,39 @@ def infer_uploaded_video(conf, model):
         st.video(source_video)
 
     if source_video:
-        if st.button("Execution"):
-            with st.spinner("Running..."):
-                try:
-                    tfile = tempfile.NamedTemporaryFile()
-                    tfile.write(source_video.read())
-                    vid_cap = cv2.VideoCapture(
-                        tfile.name)
-                    st_frame = st.empty()
-                    while (vid_cap.isOpened()):
-                        success, image = vid_cap.read()
-                        if success:
-                            _display_detected_frames(conf,
-                                                     model,
-                                                     st_frame,
-                                                     image
-                                                     )
-                        else:
-                            vid_cap.release()
-                            break
-                except Exception as e:
-                    st.error(f"Error loading video: {e}")
+        if 'video_running' not in st.session_state:
+            st.session_state['video_running'] = False
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Execution"):
+                st.session_state['video_running'] = True
+
+        if st.session_state['video_running']:
+            try:
+                tfile = tempfile.NamedTemporaryFile()
+                tfile.write(source_video.read())
+                vid_cap = cv2.VideoCapture(tfile.name)
+                total_frames = int(vid_cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                st_frame = st.empty()
+                progress_bar = st.progress(0)
+
+                frame_idx = 0
+                stop_processing = st.checkbox("Stop Processing", key="stop_video")
+                while vid_cap.isOpened() and not stop_processing:
+                    success, image = vid_cap.read()
+                    if success:
+                        _display_detected_frames(conf, model, st_frame, image)
+                        frame_idx += 1
+                        progress_bar.progress(min(frame_idx / total_frames, 1.0))
+                    else:
+                        vid_cap.release()
+                        break
+                progress_bar.progress(1.0)
+                vid_cap.release()
+                st.session_state['video_running'] = False
+            except Exception as e:
+                st.error(f"Error loading video: {e}")
 
 
 def infer_uploaded_webcam(conf, model):
@@ -148,7 +162,7 @@ def infer_uploaded_webcam(conf, model):
         flag = st.button(
             label="Stop running"
         )
-        vid_cap = cv2.VideoCapture(0)  # local camera
+        vid_cap = cv2.VideoCapture(0)
         st_frame = st.empty()
         while not flag:
             success, image = vid_cap.read()
