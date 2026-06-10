@@ -16,28 +16,43 @@ from PIL import Image
 import tempfile
 
 
-def _display_detected_frames(conf, model, st_frame, image):
+def _display_detected_frames(conf, model, st_frame, image, display_mode="叠加显示", st_frame_res=None):
     """
     Display the detected objects on a video frame using the YOLOv8 model.
     :param conf (float): Confidence threshold for object detection.
     :param model (YOLOv8): An instance of the `YOLOv8` class containing the YOLOv8 model.
-    :param st_frame (Streamlit object): A Streamlit object to display the detected video.
+    :param st_frame (Streamlit object): A Streamlit object to display the original video.
     :param image (numpy array): A numpy array representing the video frame.
+    :param display_mode (str): "叠加显示" or "对比显示".
+    :param st_frame_res (Streamlit object, optional): A Streamlit object to display the detected video (for 对比显示).
     :return: float: inference time in seconds
     """
-    image = cv2.resize(image, (720, int(720 * (9 / 16))))
+    image_resized = cv2.resize(image, (720, int(720 * (9 / 16))))
 
     t1 = time.time()
-    res = model.predict(image, conf=conf)
+    res = model.predict(image_resized, conf=conf)
     t2 = time.time()
     infer_time = t2 - t1
 
     res_plotted = res[0].plot()
-    st_frame.image(res_plotted,
-                   caption=f'Detected Video | Inference: {infer_time:.3f}s',
-                   channels="BGR",
-                   use_column_width=True
-                   )
+
+    if display_mode == "对比显示" and st_frame_res is not None:
+        st_frame.image(image_resized,
+                       caption=f'Original | {infer_time:.3f}s',
+                       channels="BGR",
+                       use_column_width=True
+                       )
+        st_frame_res.image(res_plotted,
+                           caption=f'Detected | {infer_time:.3f}s',
+                           channels="BGR",
+                           use_column_width=True
+                           )
+    else:
+        st_frame.image(res_plotted,
+                       caption=f'Detected | {infer_time:.3f}s',
+                       channels="BGR",
+                       use_column_width=True
+                       )
     return infer_time
 
 
@@ -56,11 +71,12 @@ def load_model(model_path):
     return model
 
 
-def infer_uploaded_image(conf, model):
+def infer_uploaded_image(conf, model, display_mode="叠加显示"):
     """
     Execute inference for uploaded image
     :param conf: Confidence of YOLOv8 model
     :param model: An instance of the `YOLOv8` class containing the YOLOv8 model.
+    :param display_mode: "叠加显示" or "对比显示".
     :return: None
     """
     source_img = st.sidebar.file_uploader(
@@ -68,17 +84,13 @@ def infer_uploaded_image(conf, model):
         type=("jpg", "jpeg", "png", 'bmp', 'webp')
     )
 
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if source_img:
-            uploaded_image = Image.open(source_img)
-            # adding the uploaded image to the page with caption
-            st.image(
-                image=source_img,
-                caption="Uploaded Image",
-                use_column_width=True
-            )
+    if source_img:
+        uploaded_image = Image.open(source_img)
+        st.image(
+            image=source_img,
+            caption="Uploaded Image",
+            use_column_width=True
+        )
 
     if source_img:
         if st.button("Execution"):
@@ -88,7 +100,24 @@ def infer_uploaded_image(conf, model):
                 boxes = res[0].boxes
                 res_plotted = res[0].plot()[:, :, ::-1]
 
-                with col2:
+                if display_mode == "对比显示":
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.image(source_img,
+                                 caption="Original Image",
+                                 use_column_width=True)
+                    with col2:
+                        st.image(res_plotted,
+                                 caption="Detected Image",
+                                 use_column_width=True)
+                        try:
+                            with st.expander("Detection Results"):
+                                for box in boxes:
+                                    st.write(box.xywh)
+                        except Exception as ex:
+                            st.write("No image is uploaded yet!")
+                            st.write(ex)
+                else:
                     st.image(res_plotted,
                              caption="Detected Image",
                              use_column_width=True)
@@ -101,11 +130,12 @@ def infer_uploaded_image(conf, model):
                         st.write(ex)
 
 
-def infer_uploaded_video(conf, model):
+def infer_uploaded_video(conf, model, display_mode="叠加显示"):
     """
     Execute inference for uploaded video
     :param conf: Confidence of YOLOv8 model
     :param model: An instance of the `YOLOv8` class containing the YOLOv8 model.
+    :param display_mode: "叠加显示" or "对比显示".
     :return: None
     """
     source_video = st.sidebar.file_uploader(
@@ -130,15 +160,22 @@ def infer_uploaded_video(conf, model):
                 tfile.write(source_video.read())
                 vid_cap = cv2.VideoCapture(tfile.name)
                 total_frames = int(vid_cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                st_frame = st.empty()
                 progress_bar = st.progress(0)
+
+                if display_mode == "对比显示":
+                    col1, col2 = st.columns(2)
+                    st_frame_raw = col1.empty()
+                    st_frame_det = col2.empty()
+                else:
+                    st_frame_det = st.empty()
+                    st_frame_raw = None
 
                 frame_idx = 0
                 stop_processing = st.checkbox("Stop Processing", key="stop_video")
                 while vid_cap.isOpened() and not stop_processing:
                     success, image = vid_cap.read()
                     if success:
-                        _display_detected_frames(conf, model, st_frame, image)
+                        _display_detected_frames(conf, model, st_frame_det, image, display_mode, st_frame_raw)
                         frame_idx += 1
                         progress_bar.progress(min(frame_idx / total_frames, 1.0))
                     else:
@@ -151,27 +188,37 @@ def infer_uploaded_video(conf, model):
                 st.error(f"Error loading video: {e}")
 
 
-def infer_uploaded_webcam(conf, model):
+def infer_uploaded_webcam(conf, model, display_mode="叠加显示"):
     """
     Execute inference for webcam.
     :param conf: Confidence of YOLOv8 model
     :param model: An instance of the `YOLOv8` class containing the YOLOv8 model.
+    :param display_mode: "叠加显示" or "对比显示".
     :return: None
     """
     try:
         flag = st.button(
             label="Stop running"
         )
+        if display_mode == "对比显示":
+            col1, col2 = st.columns(2)
+            st_frame_raw = col1.empty()
+            st_frame_det = col2.empty()
+        else:
+            st_frame_det = st.empty()
+            st_frame_raw = None
+
         vid_cap = cv2.VideoCapture(0)
-        st_frame = st.empty()
         while not flag:
             success, image = vid_cap.read()
             if success:
                 _display_detected_frames(
                     conf,
                     model,
-                    st_frame,
-                    image
+                    st_frame_det,
+                    image,
+                    display_mode,
+                    st_frame_raw
                 )
             else:
                 vid_cap.release()

@@ -59,6 +59,13 @@ try:
 except Exception as e:
     st.error(f"Unable to load model. Please check the specified path: {model_path}")
 
+# display mode
+st.sidebar.header("Display Mode")
+display_mode = st.sidebar.radio(
+    "Select Display Mode",
+    ["叠加显示", "对比显示"]
+)
+
 # image/video options
 st.sidebar.header("Image/Video Config")
 source_selectbox = st.sidebar.selectbox(
@@ -68,10 +75,10 @@ source_selectbox = st.sidebar.selectbox(
 
 source_img = None
 if source_selectbox == config.SOURCES_LIST[0]: # Image
-    infer_uploaded_image(confidence, model)
+    infer_uploaded_image(confidence, model, display_mode)
 elif source_selectbox == config.SOURCES_LIST[1]: # Video
-    infer_uploaded_video(confidence, model)
+    infer_uploaded_video(confidence, model, display_mode)
 elif source_selectbox == config.SOURCES_LIST[2]: # Webcam
-    infer_uploaded_webcam(confidence, model)
+    infer_uploaded_webcam(confidence, model, display_mode)
 else:
     st.error("Currently only 'Image' and 'Video' source are implemented")
