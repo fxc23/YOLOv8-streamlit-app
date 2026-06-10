@@ -46,22 +46,29 @@ st.sidebar.header("DL Model Config")
 # model options
 task_type = st.sidebar.selectbox(
     "Select Task",
-    ["Detection"]
+    ["Detection", "Segmentation"]
 )
 
 model_type = None
 model_path = None
-if task_type == "Detection":
+if task_type in ["Detection", "Segmentation"]:
     model_source = st.sidebar.radio(
         "Model Source",
         ["Built-in", "Custom Upload"]
     )
     if model_source == "Built-in":
+        if task_type == "Detection":
+            model_list = config.DETECTION_MODEL_LIST
+            model_dir = config.DETECTION_MODEL_DIR
+        else:
+            model_list = config.SEGMENTATION_MODEL_LIST
+            model_dir = config.SEGMENTATION_MODEL_DIR
+
         model_type = st.sidebar.selectbox(
             "Select Model",
-            config.DETECTION_MODEL_LIST
+            model_list
         )
-        model_path = Path(config.DETECTION_MODEL_DIR, str(model_type))
+        model_path = Path(model_dir, str(model_type))
     else:
         uploaded_model = st.sidebar.file_uploader(
             "Upload YOLO Model",
@@ -73,7 +80,7 @@ if task_type == "Detection":
         else:
             st.sidebar.warning("Upload a .pt model to continue.")
 else:
-    st.error("Currently only 'Detection' function is implemented")
+    st.error("Currently only 'Detection' and 'Segmentation' functions are implemented")
 
 confidence = float(st.sidebar.slider(
     "Select Model Confidence", 30, 100, 50)) / 100

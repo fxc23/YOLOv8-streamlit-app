@@ -31,12 +31,18 @@ SOURCES_LIST = ["Image", "Video", "Webcam"]
 
 # DL model config
 DETECTION_MODEL_DIR = ROOT / 'weights' / 'detection'
+SEGMENTATION_MODEL_DIR = ROOT / 'weights' / 'segmentation'
 CUSTOM_MODEL_DIR = ROOT / 'weights' / 'custom'
 YOLOv8n = DETECTION_MODEL_DIR / "yolov8n.pt"
 YOLOv8s = DETECTION_MODEL_DIR / "yolov8s.pt"
 YOLOv8m = DETECTION_MODEL_DIR / "yolov8m.pt"
 YOLOv8l = DETECTION_MODEL_DIR / "yolov8l.pt"
 YOLOv8x = DETECTION_MODEL_DIR / "yolov8x.pt"
+YOLOv8n_seg = SEGMENTATION_MODEL_DIR / "yolov8n-seg.pt"
+YOLOv8s_seg = SEGMENTATION_MODEL_DIR / "yolov8s-seg.pt"
+YOLOv8m_seg = SEGMENTATION_MODEL_DIR / "yolov8m-seg.pt"
+YOLOv8l_seg = SEGMENTATION_MODEL_DIR / "yolov8l-seg.pt"
+YOLOv8x_seg = SEGMENTATION_MODEL_DIR / "yolov8x-seg.pt"
 
 DETECTION_MODEL_LIST = [
     "yolov8n.pt",
@@ -44,3 +50,10 @@ DETECTION_MODEL_LIST = [
     "yolov8m.pt",
     "yolov8l.pt",
     "yolov8x.pt"]
+
+SEGMENTATION_MODEL_LIST = [
+    "yolov8n-seg.pt",
+    "yolov8s-seg.pt",
+    "yolov8m-seg.pt",
+    "yolov8l-seg.pt",
+    "yolov8x-seg.pt"]

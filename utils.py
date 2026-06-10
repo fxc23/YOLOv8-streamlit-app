@@ -255,7 +255,8 @@ def load_model(model_path):
     Returns:
         A YOLO object detection model.
     """
-    model = YOLO(model_path)
+    model_source = model_path if os.path.exists(model_path) else os.path.basename(str(model_path))
+    model = YOLO(model_source)
     return model
 
 
