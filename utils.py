@@ -288,10 +288,28 @@ def infer_uploaded_webcam(conf, model, display_mode="叠加显示"):
     :param display_mode: "叠加显示" or "对比显示".
     :return: None
     """
+    camera_index = st.sidebar.number_input(
+        "Camera Index",
+        min_value=0,
+        max_value=20,
+        value=0,
+        step=1
+    )
+    max_frames = st.sidebar.number_input(
+        "Webcam Frames to Capture",
+        min_value=1,
+        max_value=10000,
+        value=300,
+        step=1
+    )
+
+    if "webcam_detection_rows" not in st.session_state:
+        st.session_state["webcam_detection_rows"] = []
+    if "webcam_capture_done" not in st.session_state:
+        st.session_state["webcam_capture_done"] = False
+
     try:
-        flag = st.button(
-            label="Stop running"
-        )
+        run_capture = st.button("Execution")
         if display_mode == "对比显示":
             col1, col2 = st.columns(2)
             st_frame_raw = col1.empty()
@@ -300,20 +318,53 @@ def infer_uploaded_webcam(conf, model, display_mode="叠加显示"):
             st_frame_det = st.empty()
             st_frame_raw = None
 
-        vid_cap = cv2.VideoCapture(0)
-        while not flag:
-            success, image = vid_cap.read()
-            if success:
-                _display_detected_frames(
-                    conf,
-                    model,
-                    st_frame_det,
-                    image,
-                    display_mode,
-                    st_frame_raw
-                )
-            else:
+        if run_capture:
+            vid_cap = cv2.VideoCapture(int(camera_index))
+            if not vid_cap.isOpened():
+                st.error(f"Unable to open camera index {camera_index}")
+                return
+
+            detection_rows = []
+            captured_frames = 0
+            progress_bar = st.progress(0)
+            start_time = time.time()
+
+            try:
+                for frame_idx in range(int(max_frames)):
+                    success, image = vid_cap.read()
+                    if not success:
+                        st.warning("Webcam frame capture stopped.")
+                        break
+
+                    captured_frames += 1
+                    _, result = _display_detected_frames(
+                        conf,
+                        model,
+                        st_frame_det,
+                        image,
+                        display_mode,
+                        st_frame_raw
+                    )
+                    _append_video_detection_rows(
+                        detection_rows,
+                        result,
+                        frame_idx,
+                        time.time() - start_time
+                    )
+                    progress_bar.progress((frame_idx + 1) / int(max_frames))
+            finally:
                 vid_cap.release()
-                break
+
+            st.session_state["webcam_detection_rows"] = detection_rows
+            st.session_state["webcam_capture_done"] = True
+            st.success(f"Captured {captured_frames} frames and {len(detection_rows)} detection rows.")
+
+        if st.session_state["webcam_capture_done"]:
+            st.download_button(
+                label="Download Webcam Detection CSV",
+                data=_video_detections_to_csv(st.session_state["webcam_detection_rows"]),
+                file_name="webcam_detection_results.csv",
+                mime="text/csv"
+            )
     except Exception as e:
         st.error(f"Error loading video: {str(e)}")
