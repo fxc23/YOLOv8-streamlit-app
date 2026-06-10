@@ -31,6 +31,7 @@ SOURCES_LIST = ["Image", "Video", "Webcam"]
 
 # DL model config
 DETECTION_MODEL_DIR = ROOT / 'weights' / 'detection'
+CUSTOM_MODEL_DIR = ROOT / 'weights' / 'custom'
 YOLOv8n = DETECTION_MODEL_DIR / "yolov8n.pt"
 YOLOv8s = DETECTION_MODEL_DIR / "yolov8s.pt"
 YOLOv8m = DETECTION_MODEL_DIR / "yolov8m.pt"

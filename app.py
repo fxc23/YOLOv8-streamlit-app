@@ -9,11 +9,25 @@
 -------------------------------------------------
 """
 from pathlib import Path
+import hashlib
 from PIL import Image
 import streamlit as st
 
 import config
 from utils import load_model, infer_uploaded_image, infer_uploaded_video, infer_uploaded_webcam
+
+
+def save_uploaded_model(uploaded_model):
+    """Save an uploaded model file and return its local path."""
+    custom_model_dir = Path(config.CUSTOM_MODEL_DIR)
+    custom_model_dir.mkdir(parents=True, exist_ok=True)
+    model_buffer = uploaded_model.getbuffer()
+    model_hash = hashlib.sha256(model_buffer).hexdigest()[:12]
+    original_name = Path(uploaded_model.name).name
+    model_path = custom_model_dir / f"{Path(original_name).stem}_{model_hash}.pt"
+    model_path.write_bytes(model_buffer)
+    return model_path
+
 
 # setting page layout
 st.set_page_config(
@@ -36,28 +50,43 @@ task_type = st.sidebar.selectbox(
 )
 
 model_type = None
+model_path = None
 if task_type == "Detection":
-    model_type = st.sidebar.selectbox(
-        "Select Model",
-        config.DETECTION_MODEL_LIST
+    model_source = st.sidebar.radio(
+        "Model Source",
+        ["Built-in", "Custom Upload"]
     )
+    if model_source == "Built-in":
+        model_type = st.sidebar.selectbox(
+            "Select Model",
+            config.DETECTION_MODEL_LIST
+        )
+        model_path = Path(config.DETECTION_MODEL_DIR, str(model_type))
+    else:
+        uploaded_model = st.sidebar.file_uploader(
+            "Upload YOLO Model",
+            type=("pt",)
+        )
+        if uploaded_model:
+            model_path = save_uploaded_model(uploaded_model)
+            st.sidebar.success(f"Loaded custom model: {model_path.name}")
+        else:
+            st.sidebar.warning("Upload a .pt model to continue.")
 else:
     st.error("Currently only 'Detection' function is implemented")
 
 confidence = float(st.sidebar.slider(
     "Select Model Confidence", 30, 100, 50)) / 100
 
-model_path = ""
-if model_type:
-    model_path = Path(config.DETECTION_MODEL_DIR, str(model_type))
-else:
-    st.error("Please Select Model in Sidebar")
+if model_path is None:
+    st.stop()
 
 # load pretrained DL model
 try:
     model = load_model(model_path)
 except Exception as e:
     st.error(f"Unable to load model. Please check the specified path: {model_path}")
+    st.stop()
 
 # display mode
 st.sidebar.header("Display Mode")
