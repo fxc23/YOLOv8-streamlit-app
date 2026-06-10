@@ -101,6 +101,10 @@ display_mode = st.sidebar.radio(
     "Select Display Mode",
     ["叠加显示", "对比显示"]
 )
+use_chinese_labels = st.sidebar.checkbox(
+    "Use Chinese Detection Labels",
+    value=False
+)
 
 # image/video options
 st.sidebar.header("Image/Video Config")
@@ -111,10 +115,10 @@ source_selectbox = st.sidebar.selectbox(
 
 source_img = None
 if source_selectbox == config.SOURCES_LIST[0]: # Image
-    infer_uploaded_image(confidence, model, display_mode)
+    infer_uploaded_image(confidence, model, display_mode, use_chinese_labels)
 elif source_selectbox == config.SOURCES_LIST[1]: # Video
-    infer_uploaded_video(confidence, model, display_mode)
+    infer_uploaded_video(confidence, model, display_mode, use_chinese_labels)
 elif source_selectbox == config.SOURCES_LIST[2]: # Webcam
-    infer_uploaded_webcam(confidence, model, display_mode)
+    infer_uploaded_webcam(confidence, model, display_mode, use_chinese_labels)
 else:
     st.error("Currently only 'Image' and 'Video' source are implemented")

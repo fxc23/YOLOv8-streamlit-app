@@ -19,7 +19,118 @@ from PIL import Image
 import tempfile
 
 
-def _display_detected_frames(conf, model, st_frame, image, display_mode="叠加显示", st_frame_res=None):
+LABEL_ZH_ALIASES = {
+    "person": "人员",
+    "bicycle": "自行车",
+    "car": "汽车",
+    "motorcycle": "摩托车",
+    "airplane": "飞机",
+    "bus": "公交车",
+    "train": "火车",
+    "truck": "卡车",
+    "boat": "船",
+    "traffic light": "交通灯",
+    "fire hydrant": "消防栓",
+    "stop sign": "停止标志",
+    "parking meter": "停车计时器",
+    "bench": "长椅",
+    "bird": "鸟",
+    "cat": "猫",
+    "dog": "狗",
+    "horse": "马",
+    "sheep": "羊",
+    "cow": "牛",
+    "elephant": "大象",
+    "bear": "熊",
+    "zebra": "斑马",
+    "giraffe": "长颈鹿",
+    "backpack": "背包",
+    "umbrella": "雨伞",
+    "handbag": "手提包",
+    "tie": "领带",
+    "suitcase": "行李箱",
+    "frisbee": "飞盘",
+    "skis": "滑雪板",
+    "snowboard": "单板滑雪板",
+    "sports ball": "球",
+    "kite": "风筝",
+    "baseball bat": "棒球棒",
+    "baseball glove": "棒球手套",
+    "skateboard": "滑板",
+    "surfboard": "冲浪板",
+    "tennis racket": "网球拍",
+    "bottle": "瓶子",
+    "wine glass": "酒杯",
+    "cup": "杯子",
+    "fork": "叉子",
+    "knife": "刀",
+    "spoon": "勺子",
+    "bowl": "碗",
+    "banana": "香蕉",
+    "apple": "苹果",
+    "sandwich": "三明治",
+    "orange": "橙子",
+    "broccoli": "西兰花",
+    "carrot": "胡萝卜",
+    "hot dog": "热狗",
+    "pizza": "披萨",
+    "donut": "甜甜圈",
+    "cake": "蛋糕",
+    "chair": "椅子",
+    "couch": "沙发",
+    "potted plant": "盆栽",
+    "bed": "床",
+    "dining table": "餐桌",
+    "toilet": "马桶",
+    "tv": "电视",
+    "laptop": "笔记本电脑",
+    "mouse": "鼠标",
+    "remote": "遥控器",
+    "keyboard": "键盘",
+    "cell phone": "手机",
+    "microwave": "微波炉",
+    "oven": "烤箱",
+    "toaster": "烤面包机",
+    "sink": "水槽",
+    "refrigerator": "冰箱",
+    "book": "书",
+    "clock": "时钟",
+    "vase": "花瓶",
+    "scissors": "剪刀",
+    "teddy bear": "玩具熊",
+    "hair drier": "吹风机",
+    "toothbrush": "牙刷",
+    "fire": "明火",
+    "smoke": "烟雾",
+    "water_leak": "漏水",
+    "leak": "漏水",
+    "obstacle": "障碍物",
+}
+
+
+def _apply_label_display(result, use_chinese_labels=False):
+    """Apply display-only label aliases while preserving original names for rules."""
+    if not use_chinese_labels:
+        return result
+
+    original_names = dict(result.names)
+    result.original_names = original_names
+    result.names = {
+        class_id: LABEL_ZH_ALIASES.get(str(class_name).lower(), class_name)
+        for class_id, class_name in original_names.items()
+    }
+    return result
+
+
+def _display_detected_frames(
+    conf,
+    model,
+    st_frame,
+    image,
+    display_mode="叠加显示",
+    st_frame_res=None,
+    use_chinese_labels=False,
+):
     """
     Display the detected objects on a video frame using the YOLOv8 model.
     :param conf (float): Confidence threshold for object detection.
@@ -37,6 +148,7 @@ def _display_detected_frames(conf, model, st_frame, image, display_mode="叠加�
     t2 = time.time()
     infer_time = t2 - t1
 
+    _apply_label_display(res[0], use_chinese_labels)
     res_plotted = res[0].plot()
 
     if display_mode == "对比显示" and st_frame_res is not None:
@@ -164,12 +276,18 @@ def _alarm_events_to_csv(rows):
 def _extract_alarm_candidates(result, alarm_labels, alarm_conf):
     """Return the highest-confidence watched detection per class for one frame."""
     candidates = {}
+    original_names = getattr(result, "original_names", result.names)
     for box in result.boxes:
         class_id = int(box.cls[0].item())
-        class_name = result.names.get(class_id, str(class_id))
-        normalized_name = class_name.lower()
+        original_name = original_names.get(class_id, str(class_id))
+        display_name = result.names.get(class_id, str(class_id))
+        normalized_name = str(original_name).lower()
+        normalized_display_name = str(display_name).lower()
         confidence = float(box.conf[0].item())
-        if normalized_name not in alarm_labels or confidence < alarm_conf:
+        if (
+            normalized_name not in alarm_labels
+            and normalized_display_name not in alarm_labels
+        ) or confidence < alarm_conf:
             continue
 
         current = candidates.get(normalized_name)
@@ -179,7 +297,7 @@ def _extract_alarm_candidates(result, alarm_labels, alarm_conf):
         x1, y1, x2, y2 = [float(value) for value in box.xyxy[0].tolist()]
         candidates[normalized_name] = {
             "class_id": class_id,
-            "class_name": class_name,
+            "class_name": display_name,
             "confidence": confidence,
             "x1": x1,
             "y1": y1,
@@ -260,7 +378,7 @@ def load_model(model_path):
     return model
 
 
-def infer_uploaded_image(conf, model, display_mode="叠加显示"):
+def infer_uploaded_image(conf, model, display_mode="叠加显示", use_chinese_labels=False):
     """
     Execute inference for uploaded image
     :param conf: Confidence of YOLOv8 model
@@ -287,6 +405,7 @@ def infer_uploaded_image(conf, model, display_mode="叠加显示"):
             with st.spinner("Running..."):
                 res = model.predict(uploaded_image,
                                     conf=conf)
+                _apply_label_display(res[0], use_chinese_labels)
                 boxes = res[0].boxes
                 res_plotted = res[0].plot()[:, :, ::-1]
                 csv_data = _detections_to_csv(res[0])
@@ -342,7 +461,7 @@ def infer_uploaded_image(conf, model, display_mode="叠加显示"):
                 _display_alarm_events(alarm_events, "image_alarm_events.csv")
 
 
-def infer_uploaded_video(conf, model, display_mode="叠加显示"):
+def infer_uploaded_video(conf, model, display_mode="叠加显示", use_chinese_labels=False):
     """
     Execute inference for uploaded video
     :param conf: Confidence of YOLOv8 model
@@ -396,7 +515,15 @@ def infer_uploaded_video(conf, model, display_mode="叠加显示"):
                 while vid_cap.isOpened() and not stop_processing:
                     success, image = vid_cap.read()
                     if success:
-                        _, result = _display_detected_frames(conf, model, st_frame_det, image, display_mode, st_frame_raw)
+                        _, result = _display_detected_frames(
+                            conf,
+                            model,
+                            st_frame_det,
+                            image,
+                            display_mode,
+                            st_frame_raw,
+                            use_chinese_labels
+                        )
                         time_sec = frame_idx / fps if fps else 0
                         _append_video_detection_rows(detection_rows, result, frame_idx, time_sec)
                         _update_alarm_events(
@@ -436,7 +563,7 @@ def infer_uploaded_video(conf, model, display_mode="叠加显示"):
                         os.unlink(temp_name)
 
 
-def infer_uploaded_webcam(conf, model, display_mode="叠加显示"):
+def infer_uploaded_webcam(conf, model, display_mode="叠加显示", use_chinese_labels=False):
     """
     Execute inference for webcam.
     :param conf: Confidence of YOLOv8 model
@@ -504,7 +631,8 @@ def infer_uploaded_webcam(conf, model, display_mode="叠加显示"):
                         st_frame_det,
                         image,
                         display_mode,
-                        st_frame_raw
+                        st_frame_raw,
+                        use_chinese_labels
                     )
                     time_sec = time.time() - start_time
                     _append_video_detection_rows(
