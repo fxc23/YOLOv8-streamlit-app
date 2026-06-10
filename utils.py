@@ -119,6 +119,131 @@ def _append_video_detection_rows(rows, result, frame_id, time_sec):
         })
 
 
+def _parse_alarm_labels(raw_labels):
+    """Parse comma-separated alarm labels into a normalized set."""
+    return {
+        label.strip().lower()
+        for label in raw_labels.split(",")
+        if label.strip()
+    }
+
+
+def _render_alarm_controls():
+    """Render common alarm event controls in the sidebar."""
+    st.sidebar.header("Alarm Event Config")
+    raw_labels = st.sidebar.text_input(
+        "Alarm Labels",
+        value="fire, smoke, water_leak, leak, obstacle, person"
+    )
+    alarm_conf = float(st.sidebar.slider(
+        "Alarm Confidence", 1, 100, 50
+    )) / 100
+    consecutive_frames = st.sidebar.number_input(
+        "Consecutive Frames",
+        min_value=1,
+        max_value=100,
+        value=3,
+        step=1
+    )
+    return _parse_alarm_labels(raw_labels), alarm_conf, int(consecutive_frames)
+
+
+def _alarm_events_to_csv(rows):
+    """Convert alarm event rows to CSV text for download."""
+    fieldnames = [
+        "event_id", "source", "frame_id", "time_sec", "class_id", "class_name",
+        "confidence", "consecutive_frames", "x1", "y1", "x2", "y2"
+    ]
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+    return output.getvalue()
+
+
+def _extract_alarm_candidates(result, alarm_labels, alarm_conf):
+    """Return the highest-confidence watched detection per class for one frame."""
+    candidates = {}
+    for box in result.boxes:
+        class_id = int(box.cls[0].item())
+        class_name = result.names.get(class_id, str(class_id))
+        normalized_name = class_name.lower()
+        confidence = float(box.conf[0].item())
+        if normalized_name not in alarm_labels or confidence < alarm_conf:
+            continue
+
+        current = candidates.get(normalized_name)
+        if current is not None and current["confidence"] >= confidence:
+            continue
+
+        x1, y1, x2, y2 = [float(value) for value in box.xyxy[0].tolist()]
+        candidates[normalized_name] = {
+            "class_id": class_id,
+            "class_name": class_name,
+            "confidence": confidence,
+            "x1": x1,
+            "y1": y1,
+            "x2": x2,
+            "y2": y2,
+        }
+    return candidates
+
+
+def _update_alarm_events(
+    events,
+    streaks,
+    result,
+    source,
+    frame_id,
+    time_sec,
+    alarm_labels,
+    alarm_conf,
+    consecutive_frames,
+):
+    """Append alarm events when watched labels persist for enough frames."""
+    candidates = _extract_alarm_candidates(result, alarm_labels, alarm_conf)
+    for label in alarm_labels:
+        if label in candidates:
+            streaks[label] = streaks.get(label, 0) + 1
+        else:
+            streaks[label] = 0
+
+    for label, candidate in candidates.items():
+        if streaks[label] != consecutive_frames:
+            continue
+
+        events.append({
+            "event_id": len(events) + 1,
+            "source": source,
+            "frame_id": frame_id,
+            "time_sec": f"{time_sec:.3f}",
+            "class_id": candidate["class_id"],
+            "class_name": candidate["class_name"],
+            "confidence": f"{candidate['confidence']:.4f}",
+            "consecutive_frames": consecutive_frames,
+            "x1": f"{candidate['x1']:.2f}",
+            "y1": f"{candidate['y1']:.2f}",
+            "x2": f"{candidate['x2']:.2f}",
+            "y2": f"{candidate['y2']:.2f}",
+        })
+
+
+def _display_alarm_events(events, file_name):
+    """Display alarm events and provide a CSV download."""
+    st.subheader("Alarm Events")
+    if events:
+        st.dataframe(events, use_container_width=True)
+    else:
+        st.info("No alarm events triggered.")
+
+    st.download_button(
+        label="Download Alarm Events CSV",
+        data=_alarm_events_to_csv(events),
+        file_name=file_name,
+        mime="text/csv"
+    )
+
+
 @st.cache_resource
 def load_model(model_path):
     """
@@ -146,6 +271,7 @@ def infer_uploaded_image(conf, model, display_mode="叠加显示"):
         label="Choose an image...",
         type=("jpg", "jpeg", "png", 'bmp', 'webp')
     )
+    alarm_labels, alarm_conf, _ = _render_alarm_controls()
 
     if source_img:
         uploaded_image = Image.open(source_img)
@@ -163,6 +289,19 @@ def infer_uploaded_image(conf, model, display_mode="叠加显示"):
                 boxes = res[0].boxes
                 res_plotted = res[0].plot()[:, :, ::-1]
                 csv_data = _detections_to_csv(res[0])
+                alarm_events = []
+                alarm_streaks = {}
+                _update_alarm_events(
+                    alarm_events,
+                    alarm_streaks,
+                    res[0],
+                    "image",
+                    0,
+                    0,
+                    alarm_labels,
+                    alarm_conf,
+                    1
+                )
 
                 if display_mode == "对比显示":
                     col1, col2 = st.columns(2)
@@ -199,6 +338,7 @@ def infer_uploaded_image(conf, model, display_mode="叠加显示"):
                     file_name="detection_results.csv",
                     mime="text/csv"
                 )
+                _display_alarm_events(alarm_events, "image_alarm_events.csv")
 
 
 def infer_uploaded_video(conf, model, display_mode="叠加显示"):
@@ -213,6 +353,7 @@ def infer_uploaded_video(conf, model, display_mode="叠加显示"):
         label="Choose a video...",
         type=("mp4", "avi", "mov", "mkv")
     )
+    alarm_labels, alarm_conf, consecutive_frames = _render_alarm_controls()
 
     if source_video:
         st.video(source_video)
@@ -248,6 +389,8 @@ def infer_uploaded_video(conf, model, display_mode="叠加显示"):
 
                 frame_idx = 0
                 detection_rows = []
+                alarm_events = []
+                alarm_streaks = {}
                 stop_processing = st.checkbox("Stop Processing", key="stop_video")
                 while vid_cap.isOpened() and not stop_processing:
                     success, image = vid_cap.read()
@@ -255,6 +398,17 @@ def infer_uploaded_video(conf, model, display_mode="叠加显示"):
                         _, result = _display_detected_frames(conf, model, st_frame_det, image, display_mode, st_frame_raw)
                         time_sec = frame_idx / fps if fps else 0
                         _append_video_detection_rows(detection_rows, result, frame_idx, time_sec)
+                        _update_alarm_events(
+                            alarm_events,
+                            alarm_streaks,
+                            result,
+                            "video",
+                            frame_idx,
+                            time_sec,
+                            alarm_labels,
+                            alarm_conf,
+                            consecutive_frames
+                        )
                         frame_idx += 1
                         if total_frames:
                             progress_bar.progress(min(frame_idx / total_frames, 1.0))
@@ -270,6 +424,7 @@ def infer_uploaded_video(conf, model, display_mode="叠加显示"):
                     file_name="video_detection_results.csv",
                     mime="text/csv"
                 )
+                _display_alarm_events(alarm_events, "video_alarm_events.csv")
             except Exception as e:
                 st.error(f"Error loading video: {e}")
             finally:
@@ -302,9 +457,12 @@ def infer_uploaded_webcam(conf, model, display_mode="叠加显示"):
         value=300,
         step=1
     )
+    alarm_labels, alarm_conf, consecutive_frames = _render_alarm_controls()
 
     if "webcam_detection_rows" not in st.session_state:
         st.session_state["webcam_detection_rows"] = []
+    if "webcam_alarm_events" not in st.session_state:
+        st.session_state["webcam_alarm_events"] = []
     if "webcam_capture_done" not in st.session_state:
         st.session_state["webcam_capture_done"] = False
 
@@ -325,6 +483,8 @@ def infer_uploaded_webcam(conf, model, display_mode="叠加显示"):
                 return
 
             detection_rows = []
+            alarm_events = []
+            alarm_streaks = {}
             captured_frames = 0
             progress_bar = st.progress(0)
             start_time = time.time()
@@ -345,17 +505,30 @@ def infer_uploaded_webcam(conf, model, display_mode="叠加显示"):
                         display_mode,
                         st_frame_raw
                     )
+                    time_sec = time.time() - start_time
                     _append_video_detection_rows(
                         detection_rows,
                         result,
                         frame_idx,
-                        time.time() - start_time
+                        time_sec
+                    )
+                    _update_alarm_events(
+                        alarm_events,
+                        alarm_streaks,
+                        result,
+                        "webcam",
+                        frame_idx,
+                        time_sec,
+                        alarm_labels,
+                        alarm_conf,
+                        consecutive_frames
                     )
                     progress_bar.progress((frame_idx + 1) / int(max_frames))
             finally:
                 vid_cap.release()
 
             st.session_state["webcam_detection_rows"] = detection_rows
+            st.session_state["webcam_alarm_events"] = alarm_events
             st.session_state["webcam_capture_done"] = True
             st.success(f"Captured {captured_frames} frames and {len(detection_rows)} detection rows.")
 
@@ -365,6 +538,10 @@ def infer_uploaded_webcam(conf, model, display_mode="叠加显示"):
                 data=_video_detections_to_csv(st.session_state["webcam_detection_rows"]),
                 file_name="webcam_detection_results.csv",
                 mime="text/csv"
+            )
+            _display_alarm_events(
+                st.session_state["webcam_alarm_events"],
+                "webcam_alarm_events.csv"
             )
     except Exception as e:
         st.error(f"Error loading video: {str(e)}")
