@@ -29,6 +29,144 @@ def save_uploaded_model(uploaded_model):
     return model_path
 
 
+def apply_custom_theme():
+    """Apply a compact monitoring-console theme for Streamlit."""
+    st.markdown(
+        """
+        <style>
+        :root {
+            --app-bg: #111827;
+            --panel-bg: #182235;
+            --panel-border: #30405a;
+            --text-main: #f5f7fb;
+            --text-muted: #aeb8c8;
+            --accent: #18a999;
+            --accent-strong: #0f8b7d;
+            --danger: #e05252;
+            --warning: #f2b84b;
+        }
+
+        .stApp {
+            background: var(--app-bg);
+            color: var(--text-main);
+        }
+
+        .block-container {
+            padding-top: 1.5rem;
+            padding-bottom: 2rem;
+            max-width: 1480px;
+        }
+
+        h1 {
+            color: var(--text-main);
+            font-size: 1.85rem;
+            font-weight: 700;
+            letter-spacing: 0;
+            margin-bottom: 1rem;
+        }
+
+        h2, h3, .stMarkdown h2, .stMarkdown h3 {
+            color: var(--text-main);
+            letter-spacing: 0;
+        }
+
+        section[data-testid="stSidebar"] {
+            background: #0f1726;
+            border-right: 1px solid var(--panel-border);
+        }
+
+        section[data-testid="stSidebar"] h2,
+        section[data-testid="stSidebar"] h3,
+        section[data-testid="stSidebar"] label,
+        section[data-testid="stSidebar"] p,
+        section[data-testid="stSidebar"] span {
+            color: var(--text-main);
+        }
+
+        div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"] {
+            border-color: var(--panel-border);
+        }
+
+        .stButton > button,
+        .stDownloadButton > button {
+            min-height: 2.5rem;
+            border-radius: 6px;
+            border: 1px solid var(--accent);
+            background: var(--accent);
+            color: #081316;
+            font-weight: 700;
+            letter-spacing: 0;
+        }
+
+        .stButton > button:hover,
+        .stDownloadButton > button:hover {
+            border-color: var(--accent-strong);
+            background: var(--accent-strong);
+            color: #ffffff;
+        }
+
+        .stButton > button:focus,
+        .stDownloadButton > button:focus {
+            box-shadow: 0 0 0 2px rgba(24, 169, 153, 0.35);
+        }
+
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="input"] > div,
+        div[data-baseweb="base-input"],
+        textarea,
+        input {
+            border-radius: 6px;
+            border-color: var(--panel-border);
+            background-color: var(--panel-bg);
+            color: var(--text-main);
+        }
+
+        div[role="radiogroup"] label,
+        label[data-baseweb="checkbox"] {
+            background: transparent;
+            border-radius: 6px;
+        }
+
+        .stAlert {
+            border-radius: 6px;
+            border: 1px solid var(--panel-border);
+        }
+
+        .stProgress > div > div > div > div {
+            background-color: var(--accent);
+        }
+
+        img,
+        video {
+            border-radius: 6px;
+            border: 1px solid var(--panel-border);
+            background: #070b12;
+        }
+
+        div[data-testid="stDataFrame"] {
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        [data-testid="stFileUploader"] {
+            border: 1px dashed var(--panel-border);
+            border-radius: 6px;
+            padding: 0.75rem;
+            background: rgba(24, 34, 53, 0.65);
+        }
+
+        [data-testid="stCaptionContainer"],
+        .stMarkdown p,
+        small {
+            color: var(--text-muted);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # setting page layout
 st.set_page_config(
     page_title="Interactive Interface for YOLOv8",
@@ -36,6 +174,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
     )
+apply_custom_theme()
 
 # main page heading
 st.title("Interactive Interface for YOLOv8")
