@@ -10,7 +10,9 @@
 """
 from ultralytics import YOLO
 import streamlit as st
+import csv
 import cv2
+import io
 import time
 from PIL import Image
 import tempfile
@@ -56,6 +58,32 @@ def _display_detected_frames(conf, model, st_frame, image, display_mode="叠加�
     return infer_time
 
 
+def _detections_to_csv(result):
+    """Convert one Ultralytics result to CSV text for download."""
+    fieldnames = ["class_id", "class_name", "confidence", "x1", "y1", "x2", "y2", "width", "height"]
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+
+    for box in result.boxes:
+        class_id = int(box.cls[0].item())
+        confidence = float(box.conf[0].item())
+        x1, y1, x2, y2 = [float(value) for value in box.xyxy[0].tolist()]
+        writer.writerow({
+            "class_id": class_id,
+            "class_name": result.names.get(class_id, str(class_id)),
+            "confidence": f"{confidence:.4f}",
+            "x1": f"{x1:.2f}",
+            "y1": f"{y1:.2f}",
+            "x2": f"{x2:.2f}",
+            "y2": f"{y2:.2f}",
+            "width": f"{x2 - x1:.2f}",
+            "height": f"{y2 - y1:.2f}",
+        })
+
+    return output.getvalue()
+
+
 @st.cache_resource
 def load_model(model_path):
     """
@@ -99,6 +127,7 @@ def infer_uploaded_image(conf, model, display_mode="叠加显示"):
                                     conf=conf)
                 boxes = res[0].boxes
                 res_plotted = res[0].plot()[:, :, ::-1]
+                csv_data = _detections_to_csv(res[0])
 
                 if display_mode == "对比显示":
                     col1, col2 = st.columns(2)
@@ -128,6 +157,13 @@ def infer_uploaded_image(conf, model, display_mode="叠加显示"):
                     except Exception as ex:
                         st.write("No image is uploaded yet!")
                         st.write(ex)
+
+                st.download_button(
+                    label="Download Detection CSV",
+                    data=csv_data,
+                    file_name="detection_results.csv",
+                    mime="text/csv"
+                )
 
 
 def infer_uploaded_video(conf, model, display_mode="叠加显示"):
